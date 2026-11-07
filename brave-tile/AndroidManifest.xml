@@ -2,14 +2,15 @@
 <!-- A TV app-list entry for Brave: Brave's own APK declares none. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.github.vidoluco.bravetv"
-    android:versionCode="12"
-    android:versionName="1.12">
+    android:versionCode="13"
+    android:versionName="1.13">
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
     <queries>
         <package android:name="com.brave.browser" />
+        <package android:name="org.smarttube.stable" />
     </queries>
 
     <application

@@ -83,7 +83,45 @@ public class CursorService extends AccessibilityService {
     }
 
     @Override
-    public void onAccessibilityEvent(AccessibilityEvent e) { refresh(); }
+    public void onAccessibilityEvent(AccessibilityEvent e) {
+        boolean fromBrave = e.getPackageName() != null && BRAVE.contentEquals(e.getPackageName());
+        if (e.getEventType() != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) refresh();
+        if (fromBrave) maybeSendToSmartTube();
+    }
+
+    // YouTube in Brave gets the phone site, 360p, decoded in software. SmartTube plays the same video in 4K with the
+    // TV's hardware decoder and no ads. When Brave's address bar shows a YouTube video (and is not being typed in),
+    // Brave goes back one page and SmartTube opens the video, at the link's start time if it has one.
+    static final String SMARTTUBE = "org.smarttube.stable";
+    static final java.util.regex.Pattern YT = java.util.regex.Pattern.compile(
+        "(?:^|//|\\.)youtube\\.com/(?:watch\\?(?:[^#]*&)?v=|shorts/|live/)([A-Za-z0-9_-]{11})|youtu\\.be/([A-Za-z0-9_-]{11})");
+    static final java.util.regex.Pattern START = java.util.regex.Pattern.compile("[?&#]t=(\\d+)");
+    long lastUrlCheck, lastSentAt;
+    String lastSent;
+
+    void maybeSendToSmartTube() {
+        long now = SystemClock.uptimeMillis();
+        if (now - lastUrlCheck < 400) return;
+        lastUrlCheck = now;
+        AccessibilityNodeInfo r = getRootInActiveWindow();
+        if (r == null || r.getPackageName() == null || !BRAVE.contentEquals(r.getPackageName())) return;
+        java.util.List<AccessibilityNodeInfo> bars = r.findAccessibilityNodeInfosByViewId(BRAVE + ":id/url_bar");
+        if (bars.isEmpty() || bars.get(0).isFocused() || bars.get(0).getText() == null) return;
+        String url = bars.get(0).getText().toString();
+        java.util.regex.Matcher m = YT.matcher(url);
+        if (!m.find()) return;
+        String id = m.group(1) != null ? m.group(1) : m.group(2);
+        if (id.equals(lastSent) && now - lastSentAt < 15000) return;
+        if (getPackageManager().getLaunchIntentForPackage(SMARTTUBE) == null) return;
+        lastSent = id; lastSentAt = now;
+        java.util.regex.Matcher t = START.matcher(url);
+        Intent i = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.youtube.com/watch?v=" + id + (t.find() ? "&t=" + t.group(1) + "s" : "")));
+        i.setPackage(SMARTTUBE);
+        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        performGlobalAction(GLOBAL_ACTION_BACK);   // so Brave does not play it too, and is not left on that page
+        try { startActivity(i); Log.i(TAG, "video sent to SmartTube"); }
+        catch (android.content.ActivityNotFoundException ex) { Log.w(TAG, "SmartTube not found"); }
+    }
 
     @Override
     public void onInterrupt() { stopMove(); }

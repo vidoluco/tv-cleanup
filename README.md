@@ -67,7 +67,7 @@ Brave has no official TV build. The phone APK `BraveMonoarm.apk` installs and ru
 
 - **Corrupted pages.** With the default ANGLE OpenGL ES backend on this PowerVR GPU, page text turns into garbage tiles. Switching ANGLE to Vulkan fixes it.
 - **Remote.** Without spatial navigation the arrows only scroll. With it, the arrows move between links and buttons and OK presses them. The Menu key opens Brave's menu. The top bar cannot be reached with the arrows: see the pointer below.
-- **Video.** The hardware decoder stalled (7 s of video in 12 s) and software decoding played smoothly in one test each. YouTube's mobile site serves 360p in Brave, so use a TV app for 4K.
+- **Video.** The hardware decoder stalled (7 s of video in 12 s) and software decoding played smoothly in one test each. YouTube's mobile site serves 360p in Brave (measured 640x360), so the tile hands YouTube videos to SmartTube.
 - **Startup.** Brave shows a notice that it loads flags from a command-line file, and may ask to become the default browser.
 
 ### Switches
@@ -96,6 +96,7 @@ Brave declares no TV launcher entry, so it does not appear among the TV apps. `b
   - It logs neither keys nor screen text, and the app has no Internet permission.
   - Keys injected with `adb shell input` skip the accessibility key filter. To test over adb, the service takes a broadcast that only the shell (DUMP permission) can send: `adb shell am broadcast -a io.github.vidoluco.bravetv.TEST --ei key 23 --ei x 1855 --ei y 55` moves the pointer and presses OK. Results go to logcat, tag `BraveCursor`.
   - Tested over adb: three-dot menu, address bar (keyboard opens), Shields panel, a GitHub page tab, a Wikipedia link, scrolling. Confirmed with the real remote.
+- **YouTube goes to SmartTube.** When Brave's address bar shows a YouTube video (`watch`, Shorts, live, `youtu.be`) and is not being typed in, the service sends Brave back one page and opens the video in SmartTube, at the link's `t=` start time if there is one. Tested: a `watch?v=...&t=290s` link opened in Brave played in SmartTube at 3840x2160 from 4:50. Not yet checked: which page Brave is left on.
 - **Play Protect.** MATVT, an existing pointer app, was blocked as harmful and was not installed. The tile was not flagged.
 - **TCL blocks the pointer from starting.** TCL's app boot manager refuses to bind the service: `callee_does't_have_OP_AUTO_START_permission`. The TV has no switch for it. Turning the service off and on in Accessibility while the tile app is open lets it start, likely until the next reboot. After `adb install -r`, launching the tile app right away usually lets it bind again. The lasting fix is a permission only for this app, for the TV's owner to grant:
 
