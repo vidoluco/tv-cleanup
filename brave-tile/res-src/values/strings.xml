@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="cursor_label">Cursore per Brave</string>
-    <string name="cursor_desc">Una freccia per cliccare in Brave col telecomando: frecce per muoverla, OK per cliccare, spingi oltre il bordo in alto o in basso per scorrere, tieni premuto Indietro per mostrarla o nasconderla. Funziona solo dentro Brave: altrove i tasti restano come sono.</string>
+    <string name="cursor_desc">Una freccia per cliccare in Brave col telecomando: frecce per muoverla, OK per cliccare, OK tenuto premuto per lo schermo intero dei video, spingi oltre il bordo in alto o in basso per scorrere, tieni premuto Indietro per mostrarla o nasconderla. Funziona solo dentro Brave: altrove i tasti restano come sono.</string>
 </resources>

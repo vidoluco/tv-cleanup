@@ -77,7 +77,9 @@ public class CursorService extends AccessibilityService {
         if (k == 0) return;
         long t = SystemClock.uptimeMillis();
         onKeyEvent(new KeyEvent(t, t, KeyEvent.ACTION_DOWN, k, 0));
-        onKeyEvent(new KeyEvent(t, t + 50, KeyEvent.ACTION_UP, k, 0));
+        // --ez hold true: keep the key down past the hold time, as a long press on the remote
+        long up = i.getBooleanExtra("hold", false) ? HOLD_MS + 150 : 50;
+        h.postDelayed(() -> onKeyEvent(new KeyEvent(t, t + up, KeyEvent.ACTION_UP, k, 0)), up);
     }
 
     @Override
@@ -113,6 +115,50 @@ public class CursorService extends AccessibilityService {
         if (shown) wm.updateViewLayout(pointer, lp);
     }
 
+    // Full screen. A video player hides its controls a moment after they show, and the pointer is no mouse that keeps
+    // them up, so they are gone before it gets there. Holding OK finds the player's full-screen button by its label
+    // and presses it; if the controls are hidden, it shows them first.
+    static final java.util.regex.Pattern FULL = java.util.regex.Pattern.compile("(?i)full ?screen|schermo intero|plein [ée]cran|pantalla completa|vollbild");
+    static final java.util.regex.Pattern SHOW = java.util.regex.Pattern.compile("(?i)show (the )?player controls|mostra (i )?controlli");
+    boolean okHeld;
+    int fullTries;
+    final Runnable retryFull = this::retryFullscreen;
+
+    final Runnable fullscreen = () -> {
+        okHeld = true;
+        if (pressLabelled(FULL)) return;
+        if (!pressLabelled(SHOW)) { Toast.makeText(this, "Nessun pulsante schermo intero qui", Toast.LENGTH_SHORT).show(); return; }
+        // the controls take a moment to reach the accessibility tree: look again every 150 ms, for 1.5 s
+        fullTries = 10;
+        h.postDelayed(retryFull, 150);
+    };
+
+    void retryFullscreen() {
+        if (pressLabelled(FULL)) return;
+        if (--fullTries > 0) h.postDelayed(retryFull, 150);
+        else Toast.makeText(this, "Nessun pulsante schermo intero qui", Toast.LENGTH_SHORT).show();
+    }
+
+    // Click the first visible element whose label or text matches, or its nearest clickable parent.
+    boolean pressLabelled(java.util.regex.Pattern p) {
+        AccessibilityNodeInfo n = findLabelled(getRootInActiveWindow(), p, 0);
+        while (n != null && !n.isClickable()) n = n.getParent();
+        boolean ok = n != null && n.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+        if (n != null) Log.i(TAG, "pressed by label: " + describe(n) + " ok=" + ok);
+        return ok;
+    }
+
+    AccessibilityNodeInfo findLabelled(AccessibilityNodeInfo n, java.util.regex.Pattern p, int depth) {
+        if (n == null || depth > 60) return null;
+        CharSequence d = n.getContentDescription(), t = n.getText();
+        if ((d != null && p.matcher(d).find()) || (t != null && t.length() < 40 && p.matcher(t).find())) return n;
+        for (int i = 0; i < n.getChildCount(); i++) {
+            AccessibilityNodeInfo f = findLabelled(n.getChild(i), p, depth + 1);
+            if (f != null) return f;
+        }
+        return null;
+    }
+
     final Runnable toggle = () -> {
         backHeld = true;
         on = !on;
@@ -142,7 +188,10 @@ public class CursorService extends AccessibilityService {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_NUMPAD_ENTER:
-                if (!down) tap();
+                // OK: a press clicks, a hold toggles full screen
+                if (down) { if (e.getRepeatCount() == 0) { okHeld = false; h.postDelayed(fullscreen, HOLD_MS); } return true; }
+                h.removeCallbacks(fullscreen);
+                if (!okHeld) tap();
                 return true;
             default:
                 return false;

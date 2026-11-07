@@ -73,7 +73,7 @@ public class MainActivity extends Activity {
         root.addView(more);
 
         TextView help = new TextView(this);
-        help.setText("In Brave: con la freccia attiva, frecce per muoverla, OK per cliccare ovunque (anche barra in alto, scudo, schede, tre puntini), spingi oltre il bordo per scorrere. "
+        help.setText("In Brave: con la freccia attiva, frecce per muoverla, OK per cliccare ovunque (anche barra in alto, scudo, schede, tre puntini), OK tenuto premuto per lo schermo intero dei video, spingi oltre il bordo per scorrere. "
             + "Tieni premuto Indietro per spegnerla e muoverti tra link e bottoni con le frecce. Indietro premuto e rilasciato torna indietro come sempre.");
         help.setTextColor(Color.rgb(170, 174, 184));
         help.setTextSize(16);
