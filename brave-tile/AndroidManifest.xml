@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A TV app-list entry for Brave: Brave's own APK declares none. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="io.github.vidoluco.bravetv"
+    android:versionCode="10"
+    android:versionName="1.10">
+
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <queries>
+        <package android:name="com.brave.browser" />
+    </queries>
+
+    <application
+        android:label="Brave"
+        android:icon="@mipmap/icon"
+        android:banner="@drawable/banner"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="stateAlwaysHidden|adjustPan">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <!-- The pointer for Brave: switched on by the user in Settings, Accessibility. -->
+        <service
+            android:name=".CursorService"
+            android:label="@string/cursor_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/cursor" />
+        </service>
+    </application>
+</manifest>

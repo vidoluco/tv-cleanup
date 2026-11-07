@@ -1,0 +1,20 @@
+# Device data and screenshots stay on this machine
+backup-*/
+LATEST_BACKUP
+*.png
+*.log
+race-*-latency.txt
+.DS_Store
+# Brave tile: the signing key stays on this Mac; build output and drawn art are rebuilt by build.sh
+brave-tile/.signing.keystore
+brave-tile/build/
+brave-tile/res/
+brave-tile/brave-tv.apk
+brave-tile/*.idsig
+# Brave updater state
+.brave-update-last
+# Local settings and secrets
+local.env
+brave-tile/.signing.env
+brave-tile/art/
+update-brave.launchd.log

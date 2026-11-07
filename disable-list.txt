@@ -1,0 +1,12 @@
+# package | why
+tv.samba.ssm.ui | Samba TV: viewing-data tracking
+com.tcl.logkit | TCL log collection
+com.tcl.exhibit | store demo mode
+com.tcl.channelplus | TCL Channel: ad-supported content
+com.tcl.waterfall.overseas | TCL content feed: ad-supported, last used 10 seconds on 2026-10-28
+com.tcl.smartalexa | TCL Alexa integration
+com.tcl.usercenter | TCL account service, runs in background (17 MB)
+com.tcl.repairguide | repair guide
+com.tcl.ocean.instructions | instruction manual
+com.google.android.feedback | Google feedback sender
+com.google.android.play.games | Play Games

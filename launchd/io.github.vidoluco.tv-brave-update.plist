@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Runs update-brave.sh every night at 03:30, or at the next wake if the Mac was asleep.
+     The script itself does nothing until 30 days have passed since its last completed check.
+     __DIR__ is this folder: the README install command fills it in. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.github.vidoluco.tv-brave-update</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__DIR__/update-brave.sh</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>__DIR__/update-brave.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>__DIR__/update-brave.launchd.log</string>
+</dict>
+</plist>

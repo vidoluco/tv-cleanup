@@ -1,0 +1,193 @@
+diff --git a/src/main.js b/src/main.js
+index 3543101..c5086ac 100644
+--- a/src/main.js
++++ b/src/main.js
+@@ -33,7 +33,7 @@ const num = (k, d = null) => (Q.has(k) && Number.isFinite(+Q.get(k)) ? +Q.get(k)
+ const P = {
+   track: Q.get('track'), kart: Q.get('kart'), bots: num('bots'), difficulty: Q.get('difficulty'), auto: Q.get('auto') === '1',
+   views: num('views'), players: num('players'), laps: num('laps'), seed: num('seed'), lang: LANGS.includes(Q.get('lang')) ? Q.get('lang') : null,
+-  flyover: Q.get('flyover') !== '0' && !Q.has('manual'), countdown: num('countdown', 3), manual: Q.get('manual') === '1', quality: Q.get('quality') || 'auto',
++  flyover: Q.get('flyover') !== '0' && !Q.has('manual'), countdown: num('countdown', 3), manual: Q.get('manual') === '1', quality: Q.get('quality') || (navigator.deviceMemory <= 2 ? 'tv' : 'auto'), rows: num('rows', 480),
+ };
+ 
+ const FLYOVER_S = 6.5;
+@@ -52,6 +52,14 @@ const game = {
+   get state() { return race?.state ?? null; },
+ };
+ window.__game = game;
++// ?fps=1, for tools on a device with no devtools: frames, draw calls and triangles on the screen
++if (Q.has('fps')) {
++  const el = document.createElement('div');
++  el.style.cssText = 'position:fixed;left:50%;top:0;transform:translateX(-50%);z-index:99999;background:#000;color:#0f0;font:bold 20px monospace;padding:2px 10px';
++  document.body.append(el);
++  let f0 = 0;
++  setInterval(() => { const s = R?.stats?.() || {}, fps = (game.frames - f0) / 2; f0 = game.frames; el.textContent = `${fps.toFixed(1)} fps ${s.drawCalls ?? '-'} dc ${Math.round((s.triangles ?? 0) / 1000)}k tris ${canvas.width}x${canvas.height} ${game.phase}`; }, 2000);
++}
+ 
+ const canvas = document.getElementById('game');
+ const boot = document.getElementById('boot');
+@@ -61,13 +69,13 @@ window.addEventListener('unhandledrejection', (e) => { game.error ||= String(e.r
+ 
+ let R = null;
+ try {
+-  R = createRenderer(canvas, { quality: P.quality });
++  R = createRenderer(canvas, { quality: P.quality, rows: P.rows });
+ } catch (e) {
+   game.error = String(e?.message || e);
+ }
+ 
+ // ---------- the small rendered karts of the menus ----------
+-// One showcase per kart, kept for the whole session: each is a GL context, and a browser only gives so many.
++// One showcase per kart, kept for the whole session: each is a 2D canvas, drawn through one shared GL context.
+ const stageCache = new Map();
+ const thumbs = new Map();
+ const MAX_STAGES = 12;
+diff --git a/src/render/index.js b/src/render/index.js
+index bc87286..d197391 100644
+--- a/src/render/index.js
++++ b/src/render/index.js
+@@ -38,7 +38,10 @@ export function viewLayout(n) {
+   return [[0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5], [0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5]];
+ }
+ 
+-export function createRenderer(canvas, { quality = 'auto', dataBase = 'data/horizon/', backdropBase = 'assets/backdrops/', shadeSize = 4096, antialias = false } = {}) {
++export function createRenderer(canvas, { quality = 'auto', rows = 480, dataBase = 'data/horizon/', backdropBase = 'assets/backdrops/', shadeSize = 4096, antialias = false } = {}) {
++  // quality 'tv': a smart TV's GPU and its little memory. Fewer pixels, enlarged by the browser for free, and none of the costly passes.
++  const tv = quality === 'tv';
++  if (tv) shadeSize = 1024;
+   const renderer = new THREE.WebGLRenderer({ canvas, antialias, powerPreference: 'high-performance', stencil: false, depth: false, preserveDrawingBuffer: quality === 'capture' });
+   renderer.autoClear = false;
+   renderer.info.autoReset = false;
+@@ -50,7 +53,7 @@ export function createRenderer(canvas, { quality = 'auto', dataBase = 'data/hori
+   const shared = createShared(resolveLook({}));
+   shared.grade = createGradeUniforms();
+   const mat = createMat(shared);
+-  const post = createPost(renderer);
++  const post = createPost(renderer, { lite: tv });
+   const hemi = new THREE.HemisphereLight('#ffffff', '#ffffff', 1), sunLight = new THREE.DirectionalLight('#ffffff', 1);
+   const scene = new THREE.Scene();
+   scene.add(hemi, sunLight, sunLight.target);
+@@ -80,7 +83,7 @@ export function createRenderer(canvas, { quality = 'auto', dataBase = 'data/hori
+   function size() {
+     const cw = canvas.clientWidth || canvas.width || 1280, ch = canvas.clientHeight || canvas.height || 720;
+     // pixels are capped near 1080 rows: the budget is set at 1080p, and the TV is the target
+-    const dpr = window.devicePixelRatio || 1, pr = quality === 'capture' ? 1 : Math.min(dpr, 1080 / Math.min(ch, 1080));
++    const dpr = window.devicePixelRatio || 1, pr = tv ? rows / ch : quality === 'capture' ? 1 : Math.min(dpr, 1080 / Math.min(ch, 1080));
+     renderer.setPixelRatio(pr);
+     renderer.setSize(cw, ch, false);
+     const dw = Math.round(cw * pr), dh = Math.round(ch * pr);
+@@ -452,13 +455,27 @@ export function createRenderer(canvas, { quality = 'auto', dataBase = 'data/hori
+     if (fastFor > 4 && scale < 1) { scale = Math.min(1, scale + 0.06); fastFor = 0; size(); }
+   }
+ 
++  // Every turntable draws in one GL context and copies its picture to a 2D canvas of its own. A page only gets so many contexts,
++  // fewer on Android, and past the limit the browser takes the oldest one away: that is the race's.
++  let turntableGL = null;
++  const turntableInks = new Map();
++  function turntableFor(w, h, camera) {
++    if (!turntableGL) {
++      turntableGL = new THREE.WebGLRenderer({ antialias: false, alpha: true, preserveDrawingBuffer: true, depth: false, stencil: false });
++      turntableGL.outputColorSpace = THREE.LinearSRGBColorSpace;
++      turntableGL.setClearColor(0x000000, 0);
++    }
++    const el = turntableGL.domElement;
++    if (el.width !== w || el.height !== h) turntableGL.setSize(w, h, false);
++    const key = `${w}x${h}`;
++    if (!turntableInks.has(key)) turntableInks.set(key, createInk(turntableGL, w, h, camera));
++    return { gl: turntableGL, ink: turntableInks.get(key) };
++  }
++
+   // The pick screen's turntable: one kart under the look of the current track (or the default), on a clear background, with the race's ink lines.
+   async function showcase(kartId, { canvas: cv = null, yaw = 2.5, size: sz = 512, color } = {}) {
+     if (!cv) { cv = document.createElement('canvas'); cv.width = sz; cv.height = sz; }
+-    const r2 = new THREE.WebGLRenderer({ canvas: cv, antialias: false, alpha: true, preserveDrawingBuffer: true, depth: false, stencil: false });
+-    r2.outputColorSpace = THREE.LinearSRGBColorSpace;
+-    r2.setSize(cv.width, cv.height, false);
+-    r2.setClearColor(0x000000, 0);
++    const page = cv.getContext('2d');
+     const sc = new THREE.Scene();
+     sc.add(new THREE.HemisphereLight('#ffffff', '#b7a78a', 2.2));
+     const s2 = new THREE.DirectionalLight('#fff0dc', 2.7); s2.position.set(-2, 3, 2.2); sc.add(s2);
+@@ -468,8 +485,8 @@ export function createRenderer(canvas, { quality = 'auto', dataBase = 'data/hori
+     const c2 = new THREE.PerspectiveCamera(30, cv.width / cv.height, 0.5, 50);
+     const framed = fitShowcase(model);
+     c2.position.set(0, framed.y + 1.3, 6.4); c2.lookAt(0, framed.y, 0); c2.fov = framed.fov(c2.position); c2.updateProjectionMatrix();
+-    const ink = createInk(r2, cv.width, cv.height, c2);
+     function draw(dt = 1 / 60, a = yaw, state = null) {
++      const { gl, ink } = turntableFor(cv.width, cv.height, c2);
+       model.group.rotation.y = a;
+       model.update?.({ speed: 0, steer: 0, boostT: 0, drift: 0, grounded: true, t: time, ...state }, dt);
+       // the turntable stands in no weather: its materials share the world's uniforms
+@@ -477,10 +494,12 @@ export function createRenderer(canvas, { quality = 'auto', dataBase = 'data/hori
+       shared.wx.uWxOn.value = 0;
+       ink.render(sc, c2);
+       shared.wx.uWxOn.value = wxOn;
++      page.globalCompositeOperation = 'copy';
++      page.drawImage(gl.domElement, 0, 0);
+       return cv;
+     }
+     draw();
+-    return { canvas: cv, draw, model, dispose() { ink.dispose(); r2.dispose(); } };
++    return { canvas: cv, draw, model, dispose() { sc.clear(); } };
+   }
+ 
+   function resize() { size(); }
+@@ -490,6 +509,10 @@ export function createRenderer(canvas, { quality = 'auto', dataBase = 'data/hori
+     kartPool.dispose();
+     ghostPool.dispose();
+     formaWorld?.dispose();
++    for (const ink of turntableInks.values()) ink.dispose();
++    turntableInks.clear();
++    turntableGL?.dispose();
++    turntableGL = null;
+     renderer.dispose();
+   }
+ 
+diff --git a/src/render/post.js b/src/render/post.js
+index 38f13c3..0573da0 100644
+--- a/src/render/post.js
++++ b/src/render/post.js
+@@ -8,8 +8,9 @@ import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+ 
+ const QUAD_VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
+ 
+-export function createPost(renderer) {
+-  const target = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: 4, colorSpace: THREE.LinearSRGBColorSpace });
++// lite: for a weak GPU, no multisampling, no bloom, no FXAA: the composite draws straight to the canvas.
++export function createPost(renderer, { lite = false } = {}) {
++  const target = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: lite ? 0 : 4, colorSpace: THREE.LinearSRGBColorSpace });
+   target.depthTexture = new THREE.DepthTexture(2, 2);
+   target.depthTexture.type = THREE.FloatType;
+   target.scissorTest = true;
+@@ -96,7 +97,8 @@ export function createPost(renderer) {
+     U.uDivC.value.set(look.divider.color); U.uDivW.value = look.divider.width; U.uExposure.value = look.exposure;
+     U.uNear.value = camNear; U.uFar.value = camFar; U.uBloom.value = look.bloom?.strength ?? 0;
+     brightMat.uniforms.uThresh.value = look.bloom?.threshold ?? 1;
+-    bloomOn = (look.bloom?.strength ?? 0) > 0;
++    bloomOn = !lite && (look.bloom?.strength ?? 0) > 0;
++    if (lite) U.uBloom.value = 0;
+     post.outlineWidth = O.width;
+   }
+   function setSize(w, h) {
+@@ -121,8 +123,9 @@ export function createPost(renderer) {
+     }
+     mat.uniforms.uDiv.value = divider;
+     quad.material = mat;
+-    renderer.setRenderTarget(ldr);
++    renderer.setRenderTarget(lite ? null : ldr);
+     renderer.render(scene, cam);
++    if (lite) return;
+     quad.material = fxaa;
+     renderer.setRenderTarget(null);
+     renderer.render(scene, cam);
+diff --git a/src/render/showcase.js b/src/render/showcase.js
+index c61d736..eb658ff 100644
+--- a/src/render/showcase.js
++++ b/src/render/showcase.js
+@@ -1,5 +1,5 @@
+ // The turntable's picture: a model drawn with the same ink lines as the race (post.js), on a transparent background so a menu can put it
+-// on anything. One pass in its own GL context, no bloom, no FXAA: the target is multisampled and a menu shows it small.
++// on anything. One pass in the turntables' shared GL context, no bloom, no FXAA: the target is multisampled and a menu shows it small.
+ import * as THREE from 'three';
+ 
+ const VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }';
